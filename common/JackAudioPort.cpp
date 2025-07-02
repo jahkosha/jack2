@@ -32,6 +32,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <arm_neon.h>
 #endif
 
+// FIXME [jahkosha] This works only on Linux for now
+#include <cmath>
+
 namespace Jack
 {
 
@@ -106,6 +109,14 @@ static void AudioBufferMixdown(void* mixbuffer, void** src_buffers, int src_coun
 {
     void* buffer;
 
+    // Apply saturation on the source signals
+    for (int i = 0; i < src_count; ++i) {
+      jack_default_audio_sample_t* source = static_cast<jack_default_audio_sample_t*>(src_buffers[i]);
+      for (jack_nframes_t j = 0; j < nframes; j++) {
+        *(source + j) = std::tanh(*(source + j));
+      }
+    }
+
     // Copy first buffer
 #if defined (__SSE__) && !defined (__sun__)
     jack_nframes_t frames_group = nframes / 4;
@@ -151,6 +162,13 @@ static void AudioBufferMixdown(void* mixbuffer, void** src_buffers, int src_coun
     for (int i = 1; i < src_count; ++i) {
         buffer = src_buffers[i];
         MixAudioBuffer(static_cast<jack_default_audio_sample_t*>(mixbuffer), static_cast<jack_default_audio_sample_t*>(buffer), nframes);
+    }
+
+    // Apply desaturation on the summed signal
+    jack_default_audio_sample_t* summed = static_cast<jack_default_audio_sample_t*>(mixbuffer);
+    for (jack_nframes_t i = 0; i < nframes; i++) {
+      // FIXME [jahkosha] this code is not safe as the sample value may exceed +/-1.0 and atanh will explode
+      *(summed + i) = std::atanh(*(summed + i));
     }
 }
 
